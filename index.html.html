@@ -1,0 +1,1053 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shiftline: staffing plan generator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Turn a CSV of work activity into a shift plan: how many people you need, on which shifts, and what it costs.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E8EDF2; --surface:#FFFFFF; --surface2:#F1F4F8; --ink:#0E1B2C; --muted:#54667A; --line:#C9D3DE;
+  --accent:#2446C8; --accent-ink:#FFFFFF; --danger:#B9382B; --warn:#8F5600; --ok:#1B7548;
+  --display:'Bricolage Grotesque','Hanken Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --body:'Hanken Grotesk',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0B1420; --surface:#132133; --surface2:#1A2B40; --ink:#E7EEF6; --muted:#93A5B8; --line:#2A3C52;
+    --accent:#7F9CFF; --accent-ink:#0B1420; --danger:#FF8A7A; --warn:#F0B35A; --ok:#5FD39A;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0B1420; --surface:#132133; --surface2:#1A2B40; --ink:#E7EEF6; --muted:#93A5B8; --line:#2A3C52;
+  --accent:#7F9CFF; --accent-ink:#0B1420; --danger:#FF8A7A; --warn:#F0B35A; --ok:#5FD39A;
+  color-scheme:dark;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
+*,*::before,*::after{box-sizing:inherit}
+[hidden]{display:none!important}
+body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font:400 16px/1.5 var(--body);-webkit-text-size-adjust:100%}
+.wrap{max-width:1040px;margin:0 auto;padding:28px 20px 64px}
+
+/* header */
+.brand{display:flex;align-items:center;gap:12px}
+.brand svg{flex:none}
+.brand span{font:800 30px/1 var(--display);letter-spacing:-.02em}
+.tag{margin:12px 0 0;max-width:60ch;color:var(--muted);font-size:17px}
+.privacy{margin:6px 0 0;color:var(--muted);font-size:14px}
+
+/* steps */
+.steps{display:flex;gap:4px;margin:28px 0 26px;border-bottom:1px solid var(--line);overflow-x:auto}
+.steps button{flex:none;display:flex;align-items:center;gap:10px;padding:12px 16px;background:none;border:0;border-bottom:3px solid transparent;margin-bottom:-1px;color:var(--muted);font:600 15px/1 var(--body);cursor:pointer;min-height:44px}
+.steps button b{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--surface2);border:1px solid var(--line);font-size:13px;color:var(--muted)}
+.steps button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.steps button[aria-selected="true"] b{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+
+h2{font:800 26px/1.15 var(--display);letter-spacing:-.015em;margin:0 0 8px}
+h3{font:700 18px/1.25 var(--display);margin:0 0 10px}
+.lede{margin:0 0 22px;color:var(--muted);max-width:62ch}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px}
+.stack>*+*{margin-top:16px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+
+/* buttons + fields */
+.btn{font:600 15px/1 var(--body);padding:12px 18px;min-height:44px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
+.btn.small{padding:8px 12px;min-height:36px;font-size:14px}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.f{display:block}
+.f>span{display:block;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:5px}
+input[type=text],input[type=number],select,textarea{width:100%;font:500 16px/1.2 var(--body);padding:10px 12px;min-height:44px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
+textarea{min-height:120px;font-family:var(--body);line-height:1.4}
+input[type=color]{width:44px;height:44px;padding:3px;border:1px solid var(--line);border-radius:8px;background:var(--surface);cursor:pointer}
+input[type=range]{width:100%;accent-color:var(--accent);height:32px}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* drop */
+.drop{display:block;border:2px dashed var(--line);border-radius:12px;padding:34px 22px;cursor:pointer;background:var(--surface)}
+.drop strong{display:block;font:700 19px/1.2 var(--display);margin-bottom:4px}
+.drop span{color:var(--muted)}
+.drop.over,.drop:focus-within,.drop:hover{border-color:var(--accent)}
+.drop.over{background:var(--surface2)}
+details{border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+details>summary{padding:14px 18px;cursor:pointer;font-weight:600;min-height:44px}
+details>div{padding:0 18px 18px}
+.hv{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px}
+.hv label{font-size:12px;color:var(--muted);font-weight:600}
+.hv input{padding:8px;min-height:40px}
+
+.status{padding:12px 14px;border-radius:8px;font-size:15px;background:var(--surface2);border:1px solid var(--line)}
+.status.error{border-color:var(--danger);color:var(--danger)}
+.status.ok{border-color:var(--ok)}
+.note{color:var(--muted);font-size:14px;margin:0}
+
+/* charts */
+svg.chart{display:block;width:100%;height:auto}
+svg.chart text{font:500 11px var(--body);fill:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px;font-size:14px;color:var(--muted)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.legend i.line{height:0;border-top:3px solid var(--ink);border-radius:0;width:16px;vertical-align:3px}
+.legend i.short{background:var(--danger)}
+
+/* shifts */
+.shift{background:var(--surface);border:1px solid var(--line);border-left:6px solid var(--c);border-radius:12px;padding:16px 18px}
+.shead{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.shead .name{flex:1;min-width:0;font:700 18px/1.2 var(--display)}
+.shead .range{color:var(--muted);font-size:14px;white-space:nowrap}
+.icon{width:44px;height:44px;flex:none;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:22px;line-height:1;cursor:pointer}
+.icon:hover{color:var(--danger);border-color:var(--danger)}
+.lane{display:grid;grid-template-columns:repeat(24,1fr);gap:1px;height:14px;margin-top:16px;background:var(--surface2);border-radius:3px;overflow:hidden}
+.lane i{background:var(--c)}
+.laneAxis{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px}
+.meta{margin-top:10px;font-size:14px;color:var(--muted)}
+.meta .warn{color:var(--warn);font-weight:600}
+.cover{font-size:15px;padding:12px 14px;border-radius:8px;border:1px solid var(--line);background:var(--surface)}
+.cover.ok{border-color:var(--ok)}
+.cover.warn{border-color:var(--warn)}
+.presets{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:16px}
+.presets span{font-size:14px;color:var(--muted);font-weight:600}
+.diffgrid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));margin-bottom:14px}
+.diffgrid h4{grid-column:1/-1;margin:6px 0 -4px;font:700 15px var(--display)}
+.navrow{display:flex;justify-content:space-between;gap:10px;margin-top:24px}
+
+/* plan */
+.planHead{display:flex;flex-wrap:wrap;gap:12px;align-items:end;justify-content:space-between;margin-bottom:18px}
+.planHead .f{flex:1;min-width:200px;max-width:340px}
+.assump{display:grid;gap:16px}
+.prodrow{display:grid;grid-template-columns:1fr auto;gap:6px 16px;align-items:center}
+.prodrow label{font-weight:700}
+.prodrow output{font:800 30px/1 var(--display)}
+.prodrow p{grid-column:1/-1;margin:0}
+.answer{display:grid;grid-template-columns:auto 1fr;gap:6px 32px;align-items:end}
+.answer .n{font:800 88px/.85 var(--display);letter-spacing:-.04em}
+.answer .lbl{display:block;font-weight:600;color:var(--muted);margin-top:8px}
+.answer dl{margin:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}
+.answer dt{font-size:13px;color:var(--muted);font-weight:600}
+.answer dd{margin:0;font:700 22px/1.2 var(--display)}
+.banner{padding:12px 14px;border-radius:8px;border:1px solid var(--warn);color:var(--warn);font-size:15px;font-weight:500}
+.banner.bad{border-color:var(--danger);color:var(--danger)}
+.srow{display:grid;grid-template-columns:14px 1fr auto;gap:4px 14px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
+.srow:first-child{border-top:0}
+.srow .sw{width:14px;height:14px;border-radius:4px}
+.srow b{font-weight:700}
+.srow small{display:block;color:var(--muted);font-size:14px}
+.srow .num{text-align:right;font:700 20px/1.1 var(--display)}
+.srow .num small{font:500 13px var(--body)}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:18px;overflow-x:auto}
+.tabs button{flex:none;padding:10px 14px;background:none;border:0;border-bottom:3px solid transparent;margin-bottom:-1px;color:var(--muted);font:600 15px var(--body);cursor:pointer;min-height:44px}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.chip{padding:8px 12px;min-height:40px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 14px var(--body);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{font-size:13px;color:var(--muted);font-weight:600}
+td.c,th.c{text-align:center}
+td.r,th.r{text-align:right}
+tfoot td{font-weight:700;border-bottom:0}
+.cellN{display:inline-block;min-width:34px;padding:4px 8px;border-radius:6px;text-align:center;font-weight:700;background:var(--surface2);background:color-mix(in srgb,var(--c) 20%,transparent)}
+.cellN.zero{background:none;color:var(--muted);font-weight:500}
+.dot{display:inline-block;width:16px;height:16px;border-radius:50%}
+.rotaBlock+.rotaBlock{margin-top:22px}
+.rotaBlock h3 i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:8px}
+tr.short td{color:var(--danger);font-weight:700}
+.saved{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.saved:first-child{border-top:0}
+footer{margin-top:40px;color:var(--muted);font-size:14px;max-width:70ch}
+
+@media (max-width:640px){
+  .answer{grid-template-columns:1fr}
+  .answer .n{font-size:72px}
+  .shead{flex-wrap:wrap}
+  .shead .range{order:5;width:100%}
+  .navrow .btn{flex:1}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">
+        <rect x="2" y="5" width="18" height="7" rx="3" fill="#1F7A8C"/>
+        <rect x="9" y="14" width="18" height="7" rx="3" fill="#D9701A"/>
+        <rect x="16" y="23" width="16" height="7" rx="3" fill="#6B4FBB"/>
+      </svg>
+      <span>Shiftline</span>
+    </div>
+    <p class="tag">Turn a day's workload into a shift plan: how many people you need, on which shifts, and what it costs.</p>
+    <p class="privacy">Your files are read in your browser and never uploaded.</p>
+  </header>
+
+  <nav class="steps" role="tablist" aria-label="Steps">
+    <button role="tab" id="tab0" aria-selected="true" aria-controls="p0" data-step="0"><b>1</b>Workload</button>
+    <button role="tab" id="tab1" aria-selected="false" aria-controls="p1" data-step="1"><b>2</b>Shifts</button>
+    <button role="tab" id="tab2" aria-selected="false" aria-controls="p2" data-step="2"><b>3</b>Plan</button>
+  </nav>
+
+  <main>
+    <!-- STEP 1 -->
+    <section class="panel stack" id="p0" role="tabpanel" aria-labelledby="tab0">
+      <div>
+        <h2>Load your workload</h2>
+        <p class="lede">Use a CSV log of work done, with one row per task, scan or transaction. Shiftline counts how much work lands in each hour of the day.</p>
+      </div>
+
+      <label class="drop" id="drop" for="file">
+        <strong>Drop CSV files here, or click to browse</strong>
+        <span>Add several days for a better average. If a file has no date column, put the date in the file name (for example 2026-09-14 or 09_14_26).</span>
+        <input class="sr" id="file" type="file" accept=".csv,.txt,text/csv" multiple>
+      </label>
+
+      <div class="row">
+        <button class="btn" id="btnSample" type="button">Try sample data</button>
+        <span class="note">A made-up week of tasks for a mid-size site.</span>
+      </div>
+
+      <details>
+        <summary>Paste CSV text instead</summary>
+        <div class="stack">
+          <textarea id="paste" aria-label="Paste CSV text" placeholder="Date,Time,Task&#10;2026-09-14,08:05,Pick&#10;2026-09-14,08:07,Pick"></textarea>
+          <button class="btn small" id="btnPaste" type="button">Use pasted data</button>
+        </div>
+      </details>
+
+      <details>
+        <summary>Type hourly volumes instead</summary>
+        <div class="stack">
+          <p class="note">Enter how many units of work arrive in each hour on a typical day.</p>
+          <div class="hv" id="hv"></div>
+          <button class="btn small" id="btnManual" type="button">Use these volumes</button>
+        </div>
+      </details>
+
+      <div id="dataStatus" class="status" role="status" aria-live="polite" hidden></div>
+
+      <div class="card stack" id="mapping" hidden>
+        <h3>Which columns should Shiftline read?</h3>
+        <div class="grid">
+          <label class="f"><span>Time of each task</span><select id="mTime"></select></label>
+          <label class="f"><span>Date (optional)</span><select id="mDate"></select></label>
+          <label class="f"><span>Amount of work</span><select id="mVol"></select></label>
+        </div>
+      </div>
+
+      <div class="card" id="preview" hidden>
+        <h3>Average work per day, by hour</h3>
+        <div id="previewChart"></div>
+        <p class="note" id="previewNote"></p>
+      </div>
+
+      <div class="navrow"><span></span><button class="btn primary" id="toShifts" type="button" disabled>Set up shifts</button></div>
+    </section>
+
+    <!-- STEP 2 -->
+    <section class="panel stack" id="p1" role="tabpanel" aria-labelledby="tab1" hidden>
+      <div>
+        <h2>Shift structure</h2>
+        <p class="lede">Match these to how your site really runs. Each bar shows the hours a shift is on site.</p>
+      </div>
+      <div class="presets">
+        <span>Start from</span>
+        <button class="btn small" type="button" data-preset="three">Three 9-hour shifts</button>
+        <button class="btn small" type="button" data-preset="four">Four 6-hour shifts</button>
+      </div>
+      <div id="coverSummary" class="cover"></div>
+      <div id="shiftList" class="stack"></div>
+      <div class="row"><button class="btn" id="addShift" type="button">Add shift</button></div>
+
+      <details>
+        <summary>Pay differentials</summary>
+        <div>
+          <p class="note" style="margin-bottom:14px">Extra pay per hour on top of the base rate. When more than one applies to an hour, the highest one is used. They don't add together.</p>
+          <div class="diffgrid">
+            <h4>Overnight</h4>
+            <label class="f"><span>Extra $/hour</span><input type="number" id="dOvAmt" min="0" step="0.25" inputmode="decimal"></label>
+            <label class="f"><span>From hour (0–23)</span><input type="number" id="dOvFrom" min="0" max="23" step="1" inputmode="numeric"></label>
+            <label class="f"><span>To hour (0–24)</span><input type="number" id="dOvTo" min="0" max="24" step="1" inputmode="numeric"></label>
+            <h4>Evening</h4>
+            <label class="f"><span>Extra $/hour</span><input type="number" id="dEvAmt" min="0" step="0.25" inputmode="decimal"></label>
+            <label class="f"><span>From hour (0–23)</span><input type="number" id="dEvFrom" min="0" max="23" step="1" inputmode="numeric"></label>
+            <label class="f"><span>To hour (0–24)</span><input type="number" id="dEvTo" min="0" max="24" step="1" inputmode="numeric"></label>
+            <h4>Weekend (Sat and Sun)</h4>
+            <label class="f"><span>Extra $/hour</span><input type="number" id="dWk" min="0" step="0.25" inputmode="decimal"></label>
+          </div>
+        </div>
+      </details>
+
+      <div class="navrow">
+        <button class="btn" type="button" data-go="0">Back</button>
+        <button class="btn primary" type="button" data-go="2">Build plan</button>
+      </div>
+    </section>
+
+    <!-- STEP 3 -->
+    <section class="panel stack" id="p2" role="tabpanel" aria-labelledby="tab2" hidden>
+      <div class="planHead">
+        <label class="f"><span>Site or plan name</span><input type="text" id="siteName" placeholder="e.g. North warehouse"></label>
+        <div class="row">
+          <button class="btn small" id="btnSave" type="button">Save plan</button>
+          <button class="btn small" id="btnCopy" type="button">Copy summary</button>
+        </div>
+      </div>
+      <div id="planMsg" class="status" role="status" aria-live="polite" hidden></div>
+
+      <div id="noData" class="card" hidden>
+        <h3>No workload loaded yet</h3>
+        <p class="lede" style="margin-bottom:14px">Load a CSV, paste one, or type hourly volumes to see a plan.</p>
+        <button class="btn primary" type="button" data-go="0">Load workload</button>
+      </div>
+
+      <div id="planBody" class="stack">
+        <div class="card assump">
+          <div class="prodrow">
+            <label for="aProd">Productivity</label>
+            <output id="aProdOut" for="aProd">75%</output>
+            <input type="range" id="aProd" min="40" max="100" step="5" value="75">
+            <p class="note">The share of each paid hour spent on real work, after walking, waiting and small delays. Lower it and Shiftline asks for more people.</p>
+          </div>
+          <div class="grid">
+            <label class="f"><span>Absence buffer (%)</span><input type="number" id="aAbs" min="0" max="40" step="0.5" inputmode="decimal"></label>
+            <label class="f"><span>Minutes per unit of work</span><input type="number" id="aMin" min="0.1" step="0.5" inputmode="decimal"></label>
+            <label class="f"><span>Site opens (hour)</span><input type="number" id="aOpen" min="0" max="23" step="1" inputmode="numeric"></label>
+            <label class="f"><span>Site closes (hour)</span><input type="number" id="aClose" min="1" max="24" step="1" inputmode="numeric"></label>
+            <label class="f"><span>Minimum people on site</span><input type="number" id="aStaff" min="0" step="1" inputmode="numeric"></label>
+          </div>
+        </div>
+        <div id="results" class="stack"></div>
+      </div>
+
+      <details id="savedBox">
+        <summary>Saved plans</summary>
+        <div id="savedList"></div>
+      </details>
+
+      <div class="navrow">
+        <button class="btn" type="button" data-go="1">Edit shifts</button>
+        <button class="btn" type="button" data-go="0">Change workload</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Shiftline gives estimates for planning. It assumes staggered breaks and even work across an hour, and it costs overtime at 1.5× beyond 40 paid hours a week. Check the result against your local labor rules before you use it. Built with Claude.
+  </footer>
+</div>
+
+<script>
+(function(){
+'use strict';
+var $=function(s,r){return (r||document).querySelector(s)};
+var $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+var DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+var DAYS_LONG=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+var PALETTE=['#1F7A8C','#D9701A','#6B4FBB','#2E8B57','#C2456B','#8A6D1D'];
+var STORE_KEY='shiftline.plans.v1';
+var nextId=1;
+
+/* ---------- helpers ---------- */
+function clamp(v,a,b){return Math.min(b,Math.max(a,v))}
+function num(v,d){var x=parseFloat(v);return isFinite(x)?x:d}
+function pad(n){return (n<10?'0':'')+n}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function money(v,dec){return '$'+v.toLocaleString('en-US',{minimumFractionDigits:dec||0,maximumFractionDigits:dec||0})}
+function fmtClock(t){
+  t=((t%24)+24)%24; var h=Math.floor(t+1e-9), m=Math.round((t-h)*60);
+  if(m===60){h=(h+1)%24;m=0}
+  var ap=h>=12?'PM':'AM', h12=h%12===0?12:h%12;
+  return m?h12+':'+pad(m)+' '+ap:h12+' '+ap;
+}
+function fmtHourShort(h){h=((h%24)+24)%24;var ap=h>=12?'p':'a',x=h%12===0?12:h%12;return x+ap}
+function inRange(h,a,b){return a<b?(h>=a&&h<b):(a>b?(h>=a||h<b):false)}
+function ranges(hours){ // contiguous hour ranges -> "2 AM–5 AM"
+  if(!hours.length) return [];
+  var out=[],start=hours[0],prev=hours[0];
+  for(var i=1;i<=hours.length;i++){
+    var h=hours[i];
+    if(h!==prev+1){out.push(fmtClock(start)+'–'+fmtClock(prev+1)); start=h}
+    prev=h;
+  }
+  return out;
+}
+
+/* ---------- state ---------- */
+function defaultShifts(){return presetShifts('three')}
+function presetShifts(kind){
+  var list = kind==='four' ? [
+    {name:'Overnight',start:0,onsite:6,brk:0,days:5,rate:19},
+    {name:'Morning',start:6,onsite:6,brk:0,days:5,rate:17},
+    {name:'Afternoon',start:12,onsite:6,brk:0,days:5,rate:17},
+    {name:'Evening',start:18,onsite:6,brk:0,days:5,rate:18}
+  ] : [
+    {name:'Early',start:6,onsite:9,brk:1,days:5,rate:18},
+    {name:'Mid',start:14,onsite:9,brk:1,days:5,rate:18},
+    {name:'Night',start:22,onsite:9,brk:1,days:5,rate:20}
+  ];
+  return list.map(function(s,i){s.id=nextId++;s.color=PALETTE[i%PALETTE.length];return s});
+}
+var state={
+  siteName:'',
+  data:null, map:{time:-1,date:-1,vol:-1},
+  profile:null,
+  assumptions:{prod:75,absence:8,minutes:5,open:0,close:24,minStaff:1},
+  diffs:{overnight:{amt:2,from:0,to:4},evening:{amt:1,from:17,to:22},weekend:2},
+  shifts:defaultShifts(),
+  ui:{step:0,tab:'coverage',day:1},
+  plan:null
+};
+
+/* ---------- CSV parsing ---------- */
+function detectDelim(line){
+  var c={',':0,';':0,'\t':0},q=false;
+  for(var i=0;i<line.length;i++){var ch=line[i];if(ch==='"')q=!q;else if(!q&&c.hasOwnProperty(ch))c[ch]++}
+  return c[';']>c[',']&&c[';']>=c['\t']?';':(c['\t']>c[',']?'\t':',');
+}
+function parseCSV(text){
+  text=text.replace(/^\uFEFF/,'');
+  var first=text.split(/\r?\n/,1)[0]||'', d=detectDelim(first);
+  var rows=[],row=[],f='',q=false;
+  for(var i=0;i<text.length;i++){
+    var c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){f+='"';i++} else q=false } else f+=c }
+    else if(c==='"') q=true;
+    else if(c===d){row.push(f);f=''}
+    else if(c==='\n'||c==='\r'){
+      if(c==='\r'&&text[i+1]==='\n')i++;
+      row.push(f);f='';
+      if(row.length>1||row[0]!=='')rows.push(row);
+      row=[];
+    } else f+=c;
+  }
+  if(f!==''||row.length){row.push(f);if(row.length>1||row[0]!=='')rows.push(row)}
+  return rows;
+}
+function parseTable(text,name){
+  var rows=parseCSV(text);
+  if(rows.length<2) return null;
+  return {name:name,headers:rows[0].map(function(h){return h.trim()}),rows:rows.slice(1),fileDate:fileDate(name)};
+}
+function isoDate(y,m,d){
+  if(m>12&&d<=12){var t=m;m=d;d=t}
+  if(m<1||m>12||d<1||d>31) return null;
+  return y+'-'+pad(m)+'-'+pad(d);
+}
+function fileDate(name){
+  var m;
+  if(!name) return null;
+  if((m=name.match(/(\d{4})[-_.](\d{1,2})[-_.](\d{1,2})/))) return isoDate(+m[1],+m[2],+m[3]);
+  if((m=name.match(/(\d{1,2})[-_.](\d{1,2})[-_.](\d{2,4})/))){var y=+m[3];if(y<100)y+=2000;return isoDate(y,+m[1],+m[2])}
+  return null;
+}
+function parseStamp(s){
+  if(s==null) return null;
+  s=String(s).trim().replace(/^"|"$/g,'');
+  if(!s) return null;
+  var m,hr;
+  if((m=s.match(/(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2}))?/)))
+    return {date:isoDate(+m[1],+m[2],+m[3]),hour:m[4]!=null?+m[4]:null};
+  if((m=s.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:[,\sT]+(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?)?/i))){
+    var y=+m[3];if(y<100)y+=2000;
+    hr=m[4]!=null?+m[4]:null;
+    if(hr!=null&&m[6]){hr=hr%12+(/pm/i.test(m[6])?12:0)}
+    return {date:isoDate(y,+m[1],+m[2]),hour:hr};
+  }
+  if((m=s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i))){
+    hr=+m[1]; if(m[3]){hr=hr%12+(/pm/i.test(m[3])?12:0)}
+    return {date:null,hour:hr};
+  }
+  return null;
+}
+function dowOf(iso){var p=iso.split('-');var dt=new Date(Date.UTC(+p[0],+p[1]-1,+p[2]));return (dt.getUTCDay()+6)%7}
+
+/* ---------- workload profile ---------- */
+function buildProfile(){
+  var src=state.data; if(!src) return null;
+  var keys={},used=0,skipped=0,order=[];
+  src.files.forEach(function(f,fi){
+    f.rows.forEach(function(r){
+      var t=parseStamp(r[state.map.time]);
+      if(!t||t.hour==null||t.hour<0||t.hour>23){skipped++;return}
+      var date=t.date;
+      if(state.map.date>=0){var d2=parseStamp(r[state.map.date]);if(d2&&d2.date)date=d2.date}
+      if(!date) date=f.fileDate;
+      var key=date||('file'+fi), w=1;
+      if(state.map.vol>=0){w=parseFloat(String(r[state.map.vol]).replace(/[,$\s]/g,''));if(!isFinite(w))w=0}
+      var e=keys[key];
+      if(!e){e=keys[key]={dow:date?dowOf(date):null,hours:new Array(24).fill(0)};order.push(key)}
+      e.hours[t.hour]+=w; used++;
+    });
+  });
+  var n=order.length;
+  if(!n||!used) return {used:0,skipped:skipped,days:0};
+  var overall=new Array(24).fill(0), byDow=[null,null,null,null,null,null,null], cnt=[0,0,0,0,0,0,0], acc=[];
+  for(var d=0;d<7;d++)acc.push(new Array(24).fill(0));
+  order.forEach(function(k){
+    var e=keys[k];
+    for(var h=0;h<24;h++){overall[h]+=e.hours[h]/n; if(e.dow!=null)acc[e.dow][h]+=e.hours[h]}
+    if(e.dow!=null)cnt[e.dow]++;
+  });
+  for(var d2=0;d2<7;d2++)if(cnt[d2]>0)byDow[d2]=acc[d2].map(function(v){return v/cnt[d2]});
+  return {overall:overall,byDow:byDow,days:n,used:used,skipped:skipped,manual:false};
+}
+function profileFor(d){var p=state.profile;return (p.byDow&&p.byDow[d])||p.overall}
+
+/* ---------- step 1 UI ---------- */
+function status(kind,msg){
+  var el=$('#dataStatus'); el.hidden=!msg; el.className='status'+(kind?' '+kind:''); el.textContent=msg||'';
+}
+function autoMap(){
+  var hs=state.data.headers, t=-1,d=-1,i;
+  for(i=0;i<hs.length;i++)if(/time|timestamp|datetime/i.test(hs[i])){t=i;break}
+  if(t<0)t=0;
+  for(i=0;i<hs.length;i++)if(i!==t&&/date/i.test(hs[i])){d=i;break}
+  state.map={time:t,date:d,vol:-1};
+}
+function numericCols(){
+  var f=state.data.files[0], out=[];
+  state.data.headers.forEach(function(h,i){
+    var sample=f.rows.slice(0,50),ok=0;
+    sample.forEach(function(r){var v=parseFloat(String(r[i]).replace(/[,$\s]/g,''));if(isFinite(v)&&String(r[i]).trim()!=='')ok++});
+    if(sample.length&&ok/sample.length>=0.8)out.push(i);
+  });
+  return out;
+}
+function renderMapping(){
+  var hs=state.data.headers,opts=function(sel,extra){
+    return (extra||'')+hs.map(function(h,i){return '<option value="'+i+'"'+(i===sel?' selected':'')+'>'+esc(h||('Column '+(i+1)))+'</option>'}).join('');
+  };
+  $('#mTime').innerHTML=opts(state.map.time);
+  $('#mDate').innerHTML=opts(state.map.date,'<option value="-1"'+(state.map.date<0?' selected':'')+'>None</option>');
+  var nc=numericCols();
+  $('#mVol').innerHTML='<option value="-1"'+(state.map.vol<0?' selected':'')+'>Count each row as 1</option>'+nc.map(function(i){return '<option value="'+i+'"'+(i===state.map.vol?' selected':'')+'>Add up "'+esc(hs[i])+'"</option>'}).join('');
+  $('#mapping').hidden=false;
+}
+function recalc(){
+  var p=buildProfile();
+  if(!p||!p.used){
+    state.profile=null;
+    status('error',"Couldn't read a time of day from column \""+(state.data.headers[state.map.time]||'')+"\". Pick a different time column, or use a format like 08:15, 2026-09-14 08:15 or 9/14/2026 8:15 AM.");
+    $('#preview').hidden=true; $('#toShifts').disabled=true; return;
+  }
+  state.profile=p;
+  var found=[]; p.byDow.forEach(function(v,i){if(v)found.push(DAYS[i])});
+  var msg=p.used.toLocaleString()+' rows read across '+p.days+' day'+(p.days===1?'':'s')+'.';
+  if(p.skipped)msg+=' '+p.skipped.toLocaleString()+' rows skipped because their time could not be read.';
+  status('ok',msg);
+  renderPreview(found);
+  $('#toShifts').disabled=false;
+}
+function barsSVG(values,color){
+  var W=760,H=220,ml=40,mr=8,mt=10,mb=28,iw=W-ml-mr,ih=H-mt-mb,bw=iw/24;
+  var max=Math.max.apply(null,values),top=niceMax(max),step=niceStep(top),s='';
+  for(var v=0;v<=top+1e-9;v+=step){var y=mt+ih-(v/top)*ih;s+='<line x1="'+ml+'" x2="'+(W-mr)+'" y1="'+y+'" y2="'+y+'" stroke="var(--line)" stroke-width="1"/><text x="'+(ml-6)+'" y="'+(y+4)+'" text-anchor="end">'+fmtNum(v)+'</text>'}
+  values.forEach(function(v,h){
+    var bh=(v/top)*ih;
+    s+='<rect x="'+(ml+h*bw+1.5)+'" y="'+(mt+ih-bh)+'" width="'+(bw-3)+'" height="'+bh+'" rx="2" fill="'+color+'"><title>'+fmtClock(h)+': '+fmtNum(v)+'</title></rect>';
+  });
+  for(var h2=0;h2<24;h2+=3)s+='<text x="'+(ml+h2*bw)+'" y="'+(H-8)+'">'+fmtHourShort(h2)+'</text>';
+  return '<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Average work per day by hour">'+s+'</svg>';
+}
+function fmtNum(v){return v>=100?String(Math.round(v)):(Math.round(v*10)/10).toString()}
+function niceMax(m){if(m<=0)return 1;var p=Math.pow(10,Math.floor(Math.log10(m))),f=m/p;var n=f<=1?1:f<=2?2:f<=5?5:10;if(f>1&&f<=1.5)n=1.5;return n*p}
+function niceStep(top){var s=top/4;var p=Math.pow(10,Math.floor(Math.log10(s))),f=s/p;return (f<=1?1:f<=2?2:f<=5?5:10)*p}
+function renderPreview(found){
+  var p=state.profile;
+  $('#previewChart').innerHTML=barsSVG(p.overall,'var(--accent)');
+  var note='';
+  if(p.manual) note='Using the hourly volumes you typed in for every day of the week.';
+  else if(p.fromSaved) note='Loaded from a saved plan.';
+  else if(found&&found.length) note='Days with data: '+found.join(', ')+'. '+(found.length<7?'Other days use the average of those days.':'Each weekday is planned from its own data.');
+  else note='No dates found, so every day of the week uses the same average day.';
+  $('#previewNote').textContent=note;
+  $('#preview').hidden=false;
+}
+async function handleFiles(list){
+  var out=[];
+  for(var i=0;i<list.length;i++){
+    var f=list[i], text;
+    try{text=await f.text()}catch(e){continue}
+    var t=parseTable(text,f.name); if(t)out.push(t);
+  }
+  if(!out.length){status('error',"Couldn't find rows in that file. Use a CSV with a header row and at least one data row.");return}
+  loadData(out);
+}
+function loadData(files){
+  state.data={files:files,headers:files[0].headers};
+  autoMap(); renderMapping(); recalc();
+}
+function makeSample(){
+  var seed=42,rnd=function(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296};
+  var base=[5,3,2,2,3,8,20,36,50,58,56,48,40,50,56,54,46,34,24,18,14,11,9,7];
+  var mult=[1.05,1.1,1.0,1.0,0.95,0.6,0.45], rows=[];
+  for(var d=0;d<7;d++){
+    var dt=new Date(Date.UTC(2026,8,14+d)),iso=dt.getUTCFullYear()+'-'+pad(dt.getUTCMonth()+1)+'-'+pad(dt.getUTCDate());
+    for(var h=0;h<24;h++){
+      var n=Math.round(base[h]*mult[d]*(0.9+rnd()*0.2));
+      for(var k=0;k<n;k++)rows.push([iso,pad(h)+':'+pad(Math.floor(rnd()*60)),'Task']);
+    }
+  }
+  return [{name:'Sample week',headers:['Date','Time','Task'],rows:rows,fileDate:null}];
+}
+function buildManualGrid(){
+  var h='';
+  for(var i=0;i<24;i++)h+='<div><label for="hv'+i+'">'+fmtHourShort(i)+'</label><input type="number" id="hv'+i+'" min="0" step="1" inputmode="decimal" placeholder="0"></div>';
+  $('#hv').innerHTML=h;
+}
+
+/* ---------- shifts ---------- */
+function presence(s,gross){
+  var p=new Array(24).fill(0), on=clamp(num(s.onsite,8),0.5,24), br=gross?0:clamp(num(s.brk,0),0,on), st=clamp(Math.round(num(s.start,0)),0,23);
+  var slots=Math.ceil(on-1e-9), i, h;
+  for(i=0;i<slots;i++){h=(st+i)%24;p[h]+=Math.min(1,on-i)}
+  for(h=0;h<24;h++)p[h]=Math.min(1,p[h]);
+  if(br>0){
+    var w0=Math.round(on*0.25),w1=Math.max(w0+1,Math.round(on*0.75));
+    if(w1>slots)w1=slots; if(w0>=w1)w0=Math.max(0,w1-1);
+    var len=w1-w0;
+    for(i=w0;i<w1;i++){h=(st+i)%24;p[h]=Math.max(0,p[h]-br/len)}
+  }
+  return p;
+}
+function diffAt(h,d){
+  var D=state.diffs,m=0;
+  if(D.overnight.amt>0&&inRange(h,D.overnight.from,D.overnight.to))m=Math.max(m,D.overnight.amt);
+  if(D.evening.amt>0&&inRange(h,D.evening.from,D.evening.to))m=Math.max(m,D.evening.amt);
+  if(d>=5)m=Math.max(m,D.weekend);
+  return m;
+}
+function dayCost(s,p,d){var c=0;for(var h=0;h<24;h++)if(p[h]>0)c+=p[h]*(num(s.rate,0)+diffAt(h,d));return c}
+
+function field(label,k,val,min,max,step){
+  return '<label class="f"><span>'+label+'</span><input type="number" data-k="'+k+'" value="'+val+'" min="'+min+'" max="'+max+'" step="'+step+'" inputmode="decimal"></label>';
+}
+function shiftCardHTML(s){
+  return '<article class="shift" data-id="'+s.id+'" style="--c:'+s.color+'">'+
+    '<div class="shead">'+
+      '<input type="color" data-k="color" value="'+s.color+'" aria-label="Color for this shift">'+
+      '<input type="text" class="name" data-k="name" value="'+esc(s.name)+'" aria-label="Shift name">'+
+      '<span class="range" data-role="range"></span>'+
+      '<button class="icon" type="button" data-act="remove" aria-label="Remove '+esc(s.name)+'">×</button>'+
+    '</div>'+
+    '<div class="grid">'+
+      field('Start hour (0–23)','start',s.start,0,23,1)+
+      field('On-site hours','onsite',s.onsite,0.5,24,0.5)+
+      field('Unpaid break (hours)','brk',s.brk,0,4,0.25)+
+      field('Days per week','days',s.days,1,7,1)+
+      field('Base pay ($/hour)','rate',s.rate,0,500,0.25)+
+    '</div>'+
+    '<div class="lane" data-role="lane" aria-hidden="true"></div>'+
+    '<div class="laneAxis" aria-hidden="true"><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span></div>'+
+    '<div class="meta" data-role="meta"></div>'+
+  '</article>';
+}
+function renderShifts(){
+  $('#shiftList').innerHTML=state.shifts.map(shiftCardHTML).join('');
+  state.shifts.forEach(function(s){updateShiftCard(s)});
+  updateCover();
+  $('#addShift').disabled=state.shifts.length>=6;
+}
+function updateShiftCard(s){
+  var el=$('.shift[data-id="'+s.id+'"]'); if(!el) return;
+  el.style.setProperty('--c',s.color);
+  var p=presence(s), paid=p.reduce(function(a,b){return a+b},0), days=clamp(Math.round(num(s.days,5)),1,7), hrs=paid*days;
+  $('[data-role=range]',el).textContent=fmtClock(s.start)+' – '+fmtClock(s.start+num(s.onsite,0));
+  $('[data-role=lane]',el).innerHTML=p.map(function(a){return '<i style="opacity:'+(a>0.001?(0.35+0.65*a).toFixed(2):0)+'"></i>'}).join('');
+  var meta=(Math.round(paid*10)/10)+' paid hours a day · '+(Math.round(hrs*10)/10)+' hours a week per person';
+  if(hrs>40)meta+=' · <span class="warn">Overtime: '+(Math.round((hrs-40)*10)/10)+' h over 40</span>';
+  $('[data-role=meta]',el).innerHTML=meta;
+}
+function updateCover(){
+  var count=new Array(24).fill(0);
+  state.shifts.forEach(function(s){presence(s).forEach(function(a,h){if(a>0.001)count[h]++})});
+  var un=[],ov=0;
+  count.forEach(function(c,h){if(c===0)un.push(h);if(c>=2)ov++});
+  var el=$('#coverSummary');
+  if(!state.shifts.length){el.className='cover warn';el.textContent='Add at least one shift to build a plan.';return}
+  if(!un.length){el.className='cover ok';el.textContent='Every hour of the day has a shift on site. '+ov+' hour'+(ov===1?'':'s')+' overlap, which helps with handoffs.'}
+  else{el.className='cover warn';el.textContent='No shift covers '+ranges(un).join(', ')+'. That is fine if your site is closed then. Otherwise, add or extend a shift.'}
+}
+
+/* ---------- plan engine ---------- */
+function inOpen(h){
+  var o=state.assumptions.open,c=state.assumptions.close;
+  if(o===c||(o===0&&c===24))return true;
+  return o<c?(h>=o&&h<c):(h>=o||h<c);
+}
+function reqFor(d){
+  var A=state.assumptions,prof=profileFor(d),k=A.minutes/60/(A.prod/100);
+  return prof.map(function(u){return u*k});
+}
+function minArr(){
+  var m=[];for(var h=0;h<24;h++)m.push(inOpen(h)?state.assumptions.minStaff:0);return m;
+}
+function solveDay(req,mins,pres,on,unit,feasible){
+  var n=pres.map(function(){return 0}),cw=new Array(24).fill(0),co=new Array(24).fill(0),g=0,h,s;
+  while(g++<600){
+    var best=-1,bs=0;
+    for(s=0;s<pres.length;s++){
+      var gain=0;
+      for(h=0;h<24;h++){
+        if(!feasible[h])continue;
+        var dw=req[h]-cw[h],dm=mins[h]-co[h];
+        if(dw>1e-6)gain+=Math.min(dw,pres[s][h]);
+        if(dm>1e-6)gain+=Math.min(dm,on[s][h]);
+      }
+      var sc=gain/unit[s];
+      if(sc>bs+1e-12){bs=sc;best=s}
+    }
+    if(best<0)break;
+    n[best]++;for(h=0;h<24;h++){cw[h]+=pres[best][h];co[h]+=on[best][h]}
+  }
+  var changed=true;
+  while(changed){
+    changed=false;
+    var idx=pres.map(function(_,i){return i}).sort(function(a,b){return unit[b]-unit[a]});
+    for(var q=0;q<idx.length;q++){
+      s=idx[q]; if(n[s]<=0)continue;
+      var ok=true;
+      for(h=0;h<24;h++){
+        if(!feasible[h])continue;
+        if(cw[h]-pres[s][h]<req[h]-1e-6||co[h]-on[s][h]<mins[h]-1e-6){ok=false;break}
+      }
+      if(ok){n[s]--;for(h=0;h<24;h++){cw[h]-=pres[s][h];co[h]-=on[s][h]}changed=true}
+    }
+  }
+  return n;
+}
+function combosOf(D){
+  var out=[];
+  for(var m=0;m<128;m++){
+    var c=[],k=0;for(var d=0;d<7;d++){var on=!!(m&(1<<d));c.push(on);if(on)k++}
+    if(k===D)out.push(c);
+  }
+  return out;
+}
+function offContiguous(c){
+  var t=0;for(var d=0;d<7;d++){if(!c[d]&&c[(d+1)%7])t++}
+  return t<=1;
+}
+function makeRota(R,D,needs){
+  var combos=combosOf(D),remaining=needs.slice(),people=[];
+  for(var p=0;p<R;p++){
+    var best=combos[0],bs=-1e9;
+    for(var ci=0;ci<combos.length;ci++){
+      var c=combos[ci],sc=0;
+      for(var d=0;d<7;d++)if(c[d])sc+=remaining[d]>0?10+Math.min(remaining[d],6):0;
+      if(D<7&&offContiguous(c))sc+=4;
+      if(sc>bs){bs=sc;best=c}
+    }
+    people.push(best);
+    for(var d2=0;d2<7;d2++)if(best[d2])remaining[d2]--;
+  }
+  var sched=[0,0,0,0,0,0,0];
+  people.forEach(function(c){c.forEach(function(w,d){if(w)sched[d]++})});
+  return {people:people,scheduled:sched,needs:needs};
+}
+function computePlan(){
+  var A=state.assumptions,shifts=state.shifts;
+  if(!shifts.length||!state.profile)return null;
+  var pres=shifts.map(function(s){return presence(s)});
+  var on=shifts.map(function(s){return presence(s,true)});
+  var mins=minArr();
+  var feasible=[];for(var h=0;h<24;h++)feasible.push(on.some(function(p){return p[h]>0.001}));
+  var req=DAYS.map(function(_,d){return reqFor(d)});
+  var unit=shifts.map(function(s,i){return Math.max(0.01,dayCost(s,pres[i],0))});
+  var N=req.map(function(r){return solveDay(r,mins,pres,on,unit,feasible)});
+  var per=shifts.map(function(s,i){
+    var days=clamp(Math.round(num(s.days,5)),1,7);
+    var pd=N.reduce(function(a,row){return a+row[i]},0);
+    var maxN=Math.max.apply(null,N.map(function(row){return row[i]}));
+    var R=pd>0?Math.ceil(pd/days/(1-A.absence/100)-1e-9):0; R=Math.max(R,maxN);
+    var paid=pres[i].reduce(function(a,b){return a+b},0), hrsWk=paid*days;
+    var dcs=DAYS.map(function(_,d){return dayCost(s,pres[i],d)});
+    var avgDay=pd>0?N.reduce(function(a,row,d){return a+row[i]*dcs[d]},0)/pd:dcs[0];
+    var avgRate=paid>0?avgDay/paid:0, ot=Math.max(0,hrsWk-40);
+    var perPerson=days*avgDay+ot*0.5*avgRate;
+    return {s:s,days:days,pd:pd,maxN:maxN,R:R,paid:paid,hrsWk:hrsWk,avgRate:avgRate,ot:ot,weekly:R*perPerson,annual:R*perPerson*52,
+            rota:makeRota(R,days,N.map(function(row){return row[i]}))};
+  });
+  var need=0,got=0,unc={},schedH=0;
+  for(var dq=0;dq<7;dq++)for(var iq=0;iq<shifts.length;iq++)schedH+=N[dq][iq]*pres[iq].reduce(function(a,b){return a+b},0);
+  for(var d=0;d<7;d++)for(var hh=0;hh<24;hh++){
+    var cov=0;for(var i2=0;i2<shifts.length;i2++)cov+=N[d][i2]*pres[i2][hh];
+    var r=req[d][hh]; need+=r; got+=Math.min(cov,r);
+    if(!feasible[hh]&&(r>0.05||mins[hh]>0))unc[hh]=true;
+  }
+  var units=0;for(var d3=0;d3<7;d3++)units+=profileFor(d3).reduce(function(a,b){return a+b},0);
+  var weekly=per.reduce(function(a,p){return a+p.weekly},0);
+  return {pres:pres,on:on,mins:mins,feasible:feasible,req:req,N:N,per:per,
+    people:per.reduce(function(a,p){return a+p.R},0),weekly:weekly,annual:weekly*52,
+    coverage:need>0?got/need*100:100,uncovered:Object.keys(unc).map(Number).sort(function(a,b){return a-b}),
+    units:units,perUnit:units>0?weekly/units:0,used:schedH>0?Math.min(100,need/schedH*100):100};
+}
+
+/* ---------- plan rendering ---------- */
+function coverageSVG(d,plan){
+  var W=760,H=300,ml=38,mr=8,mt=14,mb=36,iw=W-ml-mr,ih=H-mt-mb,bw=iw/24;
+  var req=plan.req[d],cov=[],onc=[],h,i;
+  for(h=0;h<24;h++){var t=0,t2=0;for(i=0;i<state.shifts.length;i++){t+=plan.N[d][i]*plan.pres[i][h];t2+=plan.N[d][i]*plan.on[i][h]}cov.push(t);onc.push(t2)}
+  var ymax=Math.max(1,Math.ceil(Math.max(Math.max.apply(null,cov),Math.max.apply(null,req),Math.max.apply(null,plan.mins))*1.1));
+  var step=ymax<=6?1:ymax<=12?2:ymax<=30?5:10; ymax=Math.ceil(ymax/step)*step;
+  var y=function(v){return mt+ih-(v/ymax)*ih}, s='';
+  for(var v=0;v<=ymax;v+=step)s+='<line x1="'+ml+'" x2="'+(W-mr)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="var(--line)"/><text x="'+(ml-6)+'" y="'+(y(v)+4)+'" text-anchor="end">'+v+'</text>';
+  for(h=0;h<24;h++){
+    var acc=0;
+    for(i=0;i<state.shifts.length;i++){
+      var val=plan.N[d][i]*plan.pres[i][h];
+      if(val>0.001)s+='<rect x="'+(ml+h*bw+1)+'" y="'+y(acc+val)+'" width="'+(bw-2)+'" height="'+((val/ymax)*ih)+'" fill="'+state.shifts[i].color+'"/>';
+      acc+=val;
+    }
+  }
+  var path='M'+ml+' '+y(req[0]);
+  for(h=0;h<24;h++){path+=' V'+y(req[h])+' H'+(ml+(h+1)*bw)}
+  s+='<path d="'+path+'" fill="none" stroke="var(--ink)" stroke-width="2.5" stroke-linejoin="round"/>';
+  for(h=0;h<24;h++){
+    if(cov[h]<req[h]-0.01||onc[h]<plan.mins[h]-0.01)s+='<rect x="'+(ml+h*bw+1)+'" y="'+(H-mb+6)+'" width="'+(bw-2)+'" height="5" rx="2" fill="var(--danger)"/>';
+    s+='<rect x="'+(ml+h*bw)+'" y="'+mt+'" width="'+bw+'" height="'+ih+'" fill="transparent"><title>'+fmtClock(h)+': work needs '+(Math.round(req[h]*10)/10)+' people, '+(Math.round(cov[h]*10)/10)+' working, '+(Math.round(onc[h]*10)/10)+' on site</title></rect>';
+  }
+  for(h=0;h<24;h+=3)s+='<text x="'+(ml+h*bw)+'" y="'+(H-mb+26)+'">'+fmtHourShort(h)+'</text>';
+  return '<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="People needed and scheduled by hour on '+DAYS_LONG[d]+'">'+s+'</svg>';
+}
+function tabCoverage(plan){
+  var d=state.ui.day;
+  var chips=DAYS.map(function(n,i){return '<button class="chip" type="button" data-day="'+i+'" aria-pressed="'+(i===d)+'">'+n+'</button>'}).join('');
+  var leg=state.shifts.map(function(s){return '<span><i style="background:'+s.color+'"></i>'+esc(s.name)+'</span>'}).join('');
+  var short=false;
+  for(var h=0;h<24;h++){var c=0,c2=0;for(var i=0;i<state.shifts.length;i++){c+=plan.N[d][i]*plan.pres[i][h];c2+=plan.N[d][i]*plan.on[i][h]}if(c<plan.req[d][h]-0.01||c2<plan.mins[h]-0.01)short=true}
+  return '<div class="chips" role="group" aria-label="Day">'+chips+'</div>'+coverageSVG(d,plan)+
+    '<div class="legend">'+leg+'<span><i class="line"></i>People needed for the work</span>'+(short?'<span><i class="short"></i>Not enough people</span>':'')+'</div>'+
+    '<p class="note" style="margin-top:8px">Bars show people working after breaks. The plan also keeps at least '+state.assumptions.minStaff+' '+(state.assumptions.minStaff===1?'person':'people')+' on site while the site is open.</p>';
+}
+function tabPositions(plan){
+  var head=state.shifts.map(function(s){return '<th class="c"><span class="dot" style="background:'+s.color+';width:10px;height:10px;margin-right:6px"></span>'+esc(s.name)+'</th>'}).join('');
+  var rows=DAYS_LONG.map(function(name,d){
+    var tot=0,cells=state.shifts.map(function(s,i){var n=plan.N[d][i];tot+=n;return '<td class="c"><span class="cellN'+(n?'':' zero')+'" style="--c:'+s.color+'">'+n+'</span></td>'}).join('');
+    return '<tr><td>'+name+'</td>'+cells+'<td class="c"><b>'+tot+'</b></td></tr>';
+  }).join('');
+  return '<p class="note" style="margin-bottom:12px">People needed on site each day. These are positions to fill, not the roster size. The roster adds days off and the absence buffer.</p>'+
+    '<div class="scroll"><table><thead><tr><th>Day</th>'+head+'<th class="c">Total</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+function tabRota(plan){
+  var out=plan.per.map(function(p){
+    if(!p.R)return '<div class="rotaBlock"><h3><i style="background:'+p.s.color+'"></i>'+esc(p.s.name)+'</h3><p class="note">No one is needed on this shift.</p></div>';
+    var rows=p.rota.people.map(function(c,i){
+      return '<tr><td>'+esc(p.s.name)+' '+(i+1)+'</td>'+c.map(function(w){return '<td class="c">'+(w?'<span class="dot" style="background:'+p.s.color+'" title="Working"></span><span class="sr">Works</span>':'<span class="sr">Off</span>')+'</td>'}).join('')+'</tr>';
+    }).join('');
+    var needRow='<tr><td>Needed</td>'+p.rota.needs.map(function(n){return '<td class="c">'+n+'</td>'}).join('')+'</tr>';
+    var schedRow='<tr>'+'<td>Scheduled</td>'+p.rota.scheduled.map(function(n,d){return '<td class="c" '+(n<p.rota.needs[d]?'style="color:var(--danger);font-weight:700"':'')+'>'+n+'</td>'}).join('')+'</tr>';
+    return '<div class="rotaBlock"><h3><i style="background:'+p.s.color+'"></i>'+esc(p.s.name)+' · '+p.R+' '+(p.R===1?'person':'people')+'</h3>'+
+      '<div class="scroll"><table><thead><tr><th>Person</th>'+DAYS.map(function(n){return '<th class="c">'+n+'</th>'}).join('')+'</tr></thead><tbody>'+rows+'</tbody><tfoot>'+needRow+schedRow+'</tfoot></table></div></div>';
+  }).join('');
+  return '<p class="note" style="margin-bottom:14px">One way to spread days off so each day has enough people. Dots are working days.</p>'+out;
+}
+function tabCost(plan){
+  var rows=plan.per.map(function(p){
+    return '<tr><td><span class="dot" style="background:'+p.s.color+';width:10px;height:10px;margin-right:8px"></span>'+esc(p.s.name)+'</td><td class="r">'+p.R+'</td><td class="r">'+(Math.round(p.hrsWk*10)/10)+(p.ot>0?' <span style="color:var(--warn)" title="Includes overtime">OT</span>':'')+'</td><td class="r">'+money(p.avgRate,2)+'</td><td class="r">'+money(p.weekly)+'</td><td class="r">'+money(p.annual)+'</td></tr>';
+  }).join('');
+  return '<div class="scroll"><table><thead><tr><th>Shift</th><th class="r">People</th><th class="r">Hours a week each</th><th class="r">Average $/hour</th><th class="r">Per week</th><th class="r">Per year</th></tr></thead><tbody>'+rows+
+    '</tbody><tfoot><tr><td>Total</td><td class="r">'+plan.people+'</td><td></td><td></td><td class="r">'+money(plan.weekly)+'</td><td class="r">'+money(plan.annual)+'</td></tr></tfoot></table></div>'+
+    '<p class="note" style="margin-top:12px">Average $/hour includes pay differentials. Hours over 40 a week are costed at 1.5×. Costs cover wages only, with no taxes or benefits.</p>';
+}
+function renderPlan(){
+  var has=!!state.profile;
+  $('#noData').hidden=has; $('#planBody').hidden=!has;
+  $('#btnSave').disabled=!has; $('#btnCopy').disabled=!has;
+  if(!has)return;
+  var plan=computePlan(); state.plan=plan;
+  var box=$('#results');
+  if(!plan){box.innerHTML='<div class="banner">Add at least one shift on the Shifts step to build a plan.</div>';return}
+  var A=state.assumptions,html='';
+  if(plan.uncovered.length)html+='<div class="banner bad">No shift covers '+ranges(plan.uncovered).join(', ')+', so work in those hours is not staffed. Extend a shift on the Shifts step or change the site hours.</div>';
+  var otShifts=plan.per.filter(function(p){return p.ot>0});
+  if(otShifts.length)html+='<div class="banner">'+otShifts.map(function(p){return esc(p.s.name)}).join(', ')+' '+(otShifts.length===1?'runs':'run')+' more than 40 paid hours a week, so overtime is included in the cost.</div>';
+  html+='<div class="card stack"><div class="answer"><div><span class="n">'+plan.people+'</span><span class="lbl">'+(plan.people===1?'person':'people')+' on the roster</span></div>'+
+    '<dl><div><dt>Labor per week</dt><dd>'+money(plan.weekly)+'</dd></div><div><dt>Labor per year</dt><dd>'+money(plan.annual)+'</dd></div><div><dt>Workload covered</dt><dd>'+Math.round(plan.coverage)+'%</dd></div><div><dt>Cost per unit of work</dt><dd>'+money(plan.perUnit,2)+'</dd></div><div><dt>Paid time spent on work</dt><dd>'+Math.round(plan.used)+'%</dd></div></dl></div>'+
+    '<p class="note">At '+A.prod+'% productivity, with '+A.absence+'% allowed for time off. '+(state.profile.days<7&&!state.profile.manual?'Days with no data use your average day.':'')+'</p>'+
+    '<div>'+plan.per.map(function(p){
+      return '<div class="srow"><span class="sw" style="background:'+p.s.color+'"></span><div><b>'+esc(p.s.name)+'</b><small>'+fmtClock(p.s.start)+' – '+fmtClock(p.s.start+num(p.s.onsite,0))+' · '+p.days+' days a week</small></div><div class="num">'+p.R+'<small> · '+money(p.weekly)+'/wk</small></div></div>';
+    }).join('')+'</div></div>';
+  var tabs=[['coverage','Coverage by hour'],['positions','Positions per day'],['rota','Weekly rota'],['cost','Cost']];
+  html+='<div class="card"><div class="tabs" role="tablist" aria-label="Plan views">'+tabs.map(function(t){return '<button type="button" role="tab" data-tab="'+t[0]+'" aria-selected="'+(state.ui.tab===t[0])+'">'+t[1]+'</button>'}).join('')+'</div>'+
+    '<div id="tabBody">'+({coverage:tabCoverage,positions:tabPositions,rota:tabRota,cost:tabCost}[state.ui.tab])(plan)+'</div></div>';
+  box.innerHTML=html;
+}
+function summaryText(){
+  var p=state.plan; if(!p)return '';
+  var A=state.assumptions,L=[];
+  L.push('Staffing plan: '+(state.siteName||'Untitled'));
+  L.push('People on the roster: '+p.people+' across '+state.shifts.length+' shifts');
+  L.push('Assumptions: '+A.prod+'% productivity, '+A.absence+'% absence buffer, '+A.minutes+' min per unit of work');
+  p.per.forEach(function(x){L.push('- '+x.s.name+' ('+fmtClock(x.s.start)+' – '+fmtClock(x.s.start+num(x.s.onsite,0))+'): '+x.R+' people, '+x.days+' days a week, '+money(x.weekly)+' per week')});
+  L.push('Labor: '+money(p.weekly)+' per week, '+money(p.annual)+' per year. Workload covered: '+Math.round(p.coverage)+'%.');
+  return L.join('\n');
+}
+
+/* ---------- saving ---------- */
+function loadStore(){try{return JSON.parse(localStorage.getItem(STORE_KEY)||'{}')||{}}catch(e){return null}}
+function saveStore(o){try{localStorage.setItem(STORE_KEY,JSON.stringify(o));return true}catch(e){return false}}
+function planMsg(kind,msg){var el=$('#planMsg');el.hidden=!msg;el.className='status'+(kind?' '+kind:'');el.textContent=msg||''}
+function savePlan(){
+  var store=loadStore();
+  if(store===null){planMsg('error',"This browser isn't allowing saved plans here. Use Copy summary instead.");return}
+  var name=(state.siteName||'').trim()||'Untitled plan';
+  store[name]={siteName:state.siteName,shifts:state.shifts,assumptions:state.assumptions,diffs:state.diffs,profile:state.profile,savedAt:Date.now()};
+  if(saveStore(store)){planMsg('ok','Saved "'+name+'" in this browser.');renderSaved()}
+  else planMsg('error',"Couldn't save. This browser may be blocking storage.");
+}
+function renderSaved(){
+  var store=loadStore(),el=$('#savedList');
+  if(store===null){el.innerHTML='<p class="note">Saving is unavailable in this browser.</p>';return}
+  var names=Object.keys(store);
+  if(!names.length){el.innerHTML='<p class="note">No saved plans yet. Use Save plan to keep one in this browser.</p>';return}
+  el.innerHTML=names.map(function(n){return '<div class="saved"><span>'+esc(n)+'</span><span class="row"><button class="btn small" type="button" data-load="'+esc(n)+'">Load</button><button class="btn small" type="button" data-del="'+esc(n)+'">Delete</button></span></div>'}).join('');
+}
+function loadPlan(name){
+  var store=loadStore(); if(!store||!store[name])return;
+  var p=store[name];
+  state.siteName=p.siteName||''; state.shifts=p.shifts; state.assumptions=p.assumptions; state.diffs=p.diffs;
+  state.shifts.forEach(function(s){if(!s.id)s.id=nextId++; nextId=Math.max(nextId,s.id+1)});
+  state.profile=p.profile; if(state.profile)state.profile.fromSaved=true;
+  state.data=null; $('#mapping').hidden=true;
+  syncInputs(); renderShifts();
+  if(state.profile){status('ok','Loaded "'+name+'" from your saved plans.');var found=[];(state.profile.byDow||[]).forEach(function(v,i){if(v)found.push(DAYS[i])});renderPreview(found);$('#toShifts').disabled=false}
+  renderPlan(); planMsg('ok','Loaded "'+name+'".');
+}
+
+/* ---------- sync inputs <-> state ---------- */
+function syncInputs(){
+  var A=state.assumptions,D=state.diffs;
+  $('#siteName').value=state.siteName||'';
+  $('#aProd').value=A.prod; $('#aProdOut').textContent=A.prod+'%';
+  $('#aAbs').value=A.absence; $('#aMin').value=A.minutes; $('#aOpen').value=A.open; $('#aClose').value=A.close; $('#aStaff').value=A.minStaff;
+  $('#dOvAmt').value=D.overnight.amt; $('#dOvFrom').value=D.overnight.from; $('#dOvTo').value=D.overnight.to;
+  $('#dEvAmt').value=D.evening.amt; $('#dEvFrom').value=D.evening.from; $('#dEvTo').value=D.evening.to;
+  $('#dWk').value=D.weekend;
+}
+
+/* ---------- navigation ---------- */
+function go(i){
+  state.ui.step=i;
+  $$('.panel').forEach(function(p,j){p.hidden=j!==i});
+  $$('.steps button').forEach(function(b,j){b.setAttribute('aria-selected',String(j===i))});
+  if(i===2){renderPlan();renderSaved()}
+  window.scrollTo(0,0);
+}
+
+/* ---------- events ---------- */
+function bind(){
+  $$('.steps button').forEach(function(b){b.addEventListener('click',function(){go(+b.dataset.step)})});
+  document.addEventListener('click',function(e){
+    var g=e.target.closest('[data-go]'); if(g){go(+g.dataset.go)}
+  });
+  $('#toShifts').addEventListener('click',function(){go(1)});
+
+  var drop=$('#drop');
+  ['dragenter','dragover'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();drop.classList.add('over')})});
+  ['dragleave','drop'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();drop.classList.remove('over')})});
+  drop.addEventListener('drop',function(e){if(e.dataTransfer&&e.dataTransfer.files.length)handleFiles(e.dataTransfer.files)});
+  $('#file').addEventListener('change',function(e){if(e.target.files.length)handleFiles(e.target.files);e.target.value=''});
+  $('#btnSample').addEventListener('click',function(){loadData(makeSample())});
+  $('#btnPaste').addEventListener('click',function(){
+    var t=parseTable($('#paste').value,'Pasted data');
+    if(!t){status('error','Paste a CSV with a header row and at least one data row.');return}
+    loadData([t]);
+  });
+  $('#btnManual').addEventListener('click',function(){
+    var vals=[],any=false;
+    for(var i=0;i<24;i++){var v=Math.max(0,num($('#hv'+i).value,0));if(v>0)any=true;vals.push(v)}
+    if(!any){status('error','Enter a volume for at least one hour.');return}
+    state.data=null;$('#mapping').hidden=true;
+    state.profile={overall:vals,byDow:[null,null,null,null,null,null,null],days:1,used:0,skipped:0,manual:true};
+    status('ok','Using the hourly volumes you typed in.');renderPreview([]);$('#toShifts').disabled=false;
+  });
+  ['mTime','mDate','mVol'].forEach(function(id){
+    $('#'+id).addEventListener('change',function(){
+      state.map.time=+$('#mTime').value;state.map.date=+$('#mDate').value;state.map.vol=+$('#mVol').value;recalc();
+    });
+  });
+
+  var list=$('#shiftList');
+  list.addEventListener('input',function(e){
+    var inp=e.target.closest('[data-k]'); if(!inp)return;
+    var art=inp.closest('.shift'),s=state.shifts.filter(function(x){return String(x.id)===art.dataset.id})[0]; if(!s)return;
+    var k=inp.dataset.k;
+    if(k==='name'||k==='color')s[k]=inp.value;
+    else{var v=parseFloat(inp.value);if(isFinite(v))s[k]=clamp(v,+inp.min,+inp.max)}
+    updateShiftCard(s);updateCover();
+  });
+  list.addEventListener('click',function(e){
+    var b=e.target.closest('[data-act=remove]'); if(!b)return;
+    var id=b.closest('.shift').dataset.id;
+    state.shifts=state.shifts.filter(function(x){return String(x.id)!==id});
+    renderShifts();
+  });
+  $('#addShift').addEventListener('click',function(){
+    if(state.shifts.length>=6)return;
+    var used=state.shifts.map(function(s){return s.color}),color=PALETTE.filter(function(c){return used.indexOf(c)<0})[0]||PALETTE[0];
+    state.shifts.push({id:nextId++,name:'Shift '+(state.shifts.length+1),color:color,start:8,onsite:9,brk:1,days:5,rate:18});
+    renderShifts();
+  });
+  $$('[data-preset]').forEach(function(b){b.addEventListener('click',function(){state.shifts=presetShifts(b.dataset.preset);renderShifts()})});
+
+  var diffMap={dOvAmt:['overnight','amt'],dOvFrom:['overnight','from'],dOvTo:['overnight','to'],dEvAmt:['evening','amt'],dEvFrom:['evening','from'],dEvTo:['evening','to']};
+  Object.keys(diffMap).forEach(function(id){
+    $('#'+id).addEventListener('input',function(e){var v=parseFloat(e.target.value);if(isFinite(v))state.diffs[diffMap[id][0]][diffMap[id][1]]=clamp(v,+e.target.min,+e.target.max)});
+  });
+  $('#dWk').addEventListener('input',function(e){var v=parseFloat(e.target.value);if(isFinite(v))state.diffs.weekend=Math.max(0,v)});
+
+  $('#siteName').addEventListener('input',function(e){state.siteName=e.target.value});
+  $('#aProd').addEventListener('input',function(e){state.assumptions.prod=+e.target.value;$('#aProdOut').textContent=e.target.value+'%';renderPlan()});
+  var amap={aAbs:['absence',0,40],aMin:['minutes',0.1,600],aOpen:['open',0,23],aClose:['close',1,24],aStaff:['minStaff',0,200]};
+  Object.keys(amap).forEach(function(id){
+    $('#'+id).addEventListener('input',function(e){var v=parseFloat(e.target.value);if(!isFinite(v))return;state.assumptions[amap[id][0]]=clamp(v,amap[id][1],amap[id][2]);renderPlan()});
+  });
+
+  $('#results').addEventListener('click',function(e){
+    var t=e.target.closest('[data-tab]'),d=e.target.closest('[data-day]');
+    if(t){state.ui.tab=t.dataset.tab;renderPlan()}
+    else if(d){state.ui.day=+d.dataset.day;renderPlan()}
+  });
+  $('#btnSave').addEventListener('click',savePlan);
+  $('#btnCopy').addEventListener('click',function(){
+    var text=summaryText(); if(!text)return;
+    var done=function(){planMsg('ok','Summary copied.')};
+    var fallback=function(){
+      var ta=document.createElement('textarea');ta.value=text;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();
+      var ok=false;try{ok=document.execCommand('copy')}catch(err){}
+      document.body.removeChild(ta);
+      if(ok)done();else planMsg('error','Copy was blocked. Select the numbers on screen and copy them by hand.');
+    };
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done,fallback);else fallback();
+  });
+  $('#savedList').addEventListener('click',function(e){
+    var l=e.target.closest('[data-load]'),x=e.target.closest('[data-del]');
+    if(l)loadPlan(l.dataset.load);
+    if(x){var s=loadStore();if(s){delete s[x.dataset.del];saveStore(s);renderSaved()}}
+  });
+}
+
+/* ---------- init ---------- */
+buildManualGrid();
+syncInputs();
+renderShifts();
+bind();
+renderSaved();
+})();
+</script>
+</body>
+</html>
